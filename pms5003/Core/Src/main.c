@@ -52,7 +52,7 @@ DMA_HandleTypeDef hdma_uart4_rx;
 DMA_HandleTypeDef hdma_uart4_tx;
 
 /* USER CODE BEGIN PV */
-
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -107,7 +107,8 @@ int main(void)
   MX_RTC_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -387,6 +388,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if (huart->gState == HAL_UART_STATE_READY)
+  {
+    if (HAL_UART_Transmit_IT(huart, pData, len) == HAL_OK)
+    {
+      return 1;
+    }
+  }
+
+  // If UART is busy, store in ring buffer
+  if (RingBuffer_Write(&txBuf, pData, len) == RING_BUFFER_OK)
+  {
+    return 1;
+  }
+
+  return 0;
+}
 
 /* USER CODE END 4 */
 
