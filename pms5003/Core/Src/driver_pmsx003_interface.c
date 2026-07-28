@@ -35,6 +35,83 @@
  */
 
 #include "driver_pmsx003_interface.h"
+#include "main.h"
+#include "ringbuffer.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+/**
+ * @brief pmsx003 uart is UART4 in interrupt mode, debug output is USART1
+ */
+extern UART_HandleTypeDef huart4;
+extern UART_HandleTypeDef huart1;
+
+#define PMSX003_UART              (&huart4)
+#define PMSX003_DEBUG_UART        (&huart1)
+#define PMSX003_TX_TIMEOUT_MS     (100U)
+#define PMSX003_DEBUG_BUF_LEN     (256U)
+
+/**
+ * @brief pmsx003 receive ring buffer, filled one byte at a time from the UART4 isr
+ */
+static RingBuffer gs_rx_buf;
+static volatile uint8_t gs_rx_byte;
+static volatile uint8_t gs_rx_running = 0;
+
+/**
+ * @brief  arm the next single byte interrupt reception
+ * @return status code
+ *         - 0 success
+ *         - 1 start failed
+ * @note   none
+ */
+static uint8_t a_pmsx003_rx_start(void)
+{
+    if (HAL_UART_Receive_IT(PMSX003_UART, (uint8_t *)&gs_rx_byte, 1) != HAL_OK)
+    {
+        gs_rx_running = 0;
+
+        return 1;
+    }
+    gs_rx_running = 1;
+
+    return 0;
+}
+
+/**
+ * @brief     uart rx complete callback
+ * @param[in] *huart pointer to a uart handle
+ * @note      pushes the received byte into the ring buffer and re-arms reception
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == UART4)
+    {
+        uint8_t byte = gs_rx_byte;
+
+        /* drop the byte when the buffer is full, the frame parser resyncs on the 0x42 0x4D header */
+        (void)RingBuffer_Write(&gs_rx_buf, &byte, 1);
+        (void)a_pmsx003_rx_start();
+    }
+}
+
+/**
+ * @brief     uart error callback
+ * @param[in] *huart pointer to a uart handle
+ * @note      clears the error flags and restarts reception
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == UART4)
+    {
+        __HAL_UART_CLEAR_OREFLAG(huart);
+        __HAL_UART_CLEAR_NEFLAG(huart);
+        __HAL_UART_CLEAR_FEFLAG(huart);
+        __HAL_UART_CLEAR_PEFLAG(huart);
+        (void)a_pmsx003_rx_start();
+    }
+}
 
 /**
  * @brief  interface uart init
@@ -45,7 +122,9 @@
  */
 uint8_t pmsx003_interface_uart_init(void)
 {
-    return 0;
+    RingBuffer_Init(&gs_rx_buf);
+
+    return a_pmsx003_rx_start();
 }
 
 /**
@@ -57,6 +136,13 @@ uint8_t pmsx003_interface_uart_init(void)
  */
 uint8_t pmsx003_interface_uart_deinit(void)
 {
+    if (HAL_UART_AbortReceive_IT(PMSX003_UART) != HAL_OK)
+    {
+        return 1;
+    }
+    gs_rx_running = 0;
+    RingBuffer_Init(&gs_rx_buf);
+
     return 0;
 }
 
@@ -71,7 +157,22 @@ uint8_t pmsx003_interface_uart_deinit(void)
  */
 uint16_t pmsx003_interface_uart_read(uint8_t *buf, uint16_t len)
 {
-    return 0;
+    uint16_t n;
+
+    if ((buf == NULL) || (len == 0))
+    {
+        return 0;
+    }
+
+    /* the isr writes head only and this reader writes tail only, so only the isr must be held off */
+    __HAL_UART_DISABLE_IT(PMSX003_UART, UART_IT_RXNE);
+    n = RingBuffer_Read(&gs_rx_buf, buf, len);
+    if (gs_rx_running != 0)
+    {
+        __HAL_UART_ENABLE_IT(PMSX003_UART, UART_IT_RXNE);
+    }
+
+    return n;
 }
 
 /**
@@ -83,6 +184,13 @@ uint16_t pmsx003_interface_uart_read(uint8_t *buf, uint16_t len)
  */
 uint8_t pmsx003_interface_uart_flush(void)
 {
+    __HAL_UART_DISABLE_IT(PMSX003_UART, UART_IT_RXNE);
+    RingBuffer_Init(&gs_rx_buf);
+    if (gs_rx_running != 0)
+    {
+        __HAL_UART_ENABLE_IT(PMSX003_UART, UART_IT_RXNE);
+    }
+
     return 0;
 }
 
@@ -97,6 +205,17 @@ uint8_t pmsx003_interface_uart_flush(void)
  */
 uint8_t pmsx003_interface_uart_write(uint8_t *buf, uint16_t len)
 {
+    if ((buf == NULL) || (len == 0))
+    {
+        return 1;
+    }
+
+    /* commands are at most 7 bytes, a blocking send keeps the rx interrupt path untouched */
+    if (HAL_UART_Transmit(PMSX003_UART, buf, len, PMSX003_TX_TIMEOUT_MS) != HAL_OK)
+    {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -109,6 +228,17 @@ uint8_t pmsx003_interface_uart_write(uint8_t *buf, uint16_t len)
  */
 uint8_t pmsx003_interface_reset_gpio_init(void)
 {
+#ifdef PMSX003_RESET_Pin
+    GPIO_InitTypeDef init = {0};
+
+    init.Pin = PMSX003_RESET_Pin;
+    init.Mode = GPIO_MODE_OUTPUT_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(PMSX003_RESET_GPIO_Port, &init);
+    HAL_GPIO_WritePin(PMSX003_RESET_GPIO_Port, PMSX003_RESET_Pin, GPIO_PIN_SET);
+#endif
+
     return 0;
 }
 
@@ -121,6 +251,10 @@ uint8_t pmsx003_interface_reset_gpio_init(void)
  */
 uint8_t pmsx003_interface_reset_gpio_deinit(void)
 {
+#ifdef PMSX003_RESET_Pin
+    HAL_GPIO_DeInit(PMSX003_RESET_GPIO_Port, PMSX003_RESET_Pin);
+#endif
+
     return 0;
 }
 
@@ -134,6 +268,13 @@ uint8_t pmsx003_interface_reset_gpio_deinit(void)
  */
 uint8_t pmsx003_interface_reset_gpio_write(uint8_t level)
 {
+#ifdef PMSX003_RESET_Pin
+    HAL_GPIO_WritePin(PMSX003_RESET_GPIO_Port, PMSX003_RESET_Pin,
+                      (level != 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+#else
+    (void)level;
+#endif
+
     return 0;
 }
 
@@ -146,6 +287,17 @@ uint8_t pmsx003_interface_reset_gpio_write(uint8_t level)
  */
 uint8_t pmsx003_interface_set_gpio_init(void)
 {
+#ifdef PMSX003_SET_Pin
+    GPIO_InitTypeDef init = {0};
+
+    init.Pin = PMSX003_SET_Pin;
+    init.Mode = GPIO_MODE_OUTPUT_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(PMSX003_SET_GPIO_Port, &init);
+    HAL_GPIO_WritePin(PMSX003_SET_GPIO_Port, PMSX003_SET_Pin, GPIO_PIN_SET);
+#endif
+
     return 0;
 }
 
@@ -158,7 +310,11 @@ uint8_t pmsx003_interface_set_gpio_init(void)
  */
 uint8_t pmsx003_interface_set_gpio_deinit(void)
 {
-     return 0;
+#ifdef PMSX003_SET_Pin
+    HAL_GPIO_DeInit(PMSX003_SET_GPIO_Port, PMSX003_SET_Pin);
+#endif
+
+    return 0;
 }
 
 /**
@@ -171,6 +327,13 @@ uint8_t pmsx003_interface_set_gpio_deinit(void)
  */
 uint8_t pmsx003_interface_set_gpio_write(uint8_t level)
 {
+#ifdef PMSX003_SET_Pin
+    HAL_GPIO_WritePin(PMSX003_SET_GPIO_Port, PMSX003_SET_Pin,
+                      (level != 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+#else
+    (void)level;
+#endif
+
     return 0;
 }
 
@@ -181,7 +344,7 @@ uint8_t pmsx003_interface_set_gpio_write(uint8_t level)
  */
 void pmsx003_interface_delay_ms(uint32_t ms)
 {
-
+    HAL_Delay(ms);
 }
 
 /**
@@ -191,5 +354,22 @@ void pmsx003_interface_delay_ms(uint32_t ms)
  */
 void pmsx003_interface_debug_print(const char *const fmt, ...)
 {
-    
+    char str[PMSX003_DEBUG_BUF_LEN];
+    va_list args;
+    int n;
+
+    va_start(args, fmt);
+    n = vsnprintf(str, sizeof(str), fmt, args);
+    va_end(args);
+
+    if (n <= 0)
+    {
+        return;
+    }
+    if ((size_t)n >= sizeof(str))
+    {
+        n = (int)sizeof(str) - 1;
+    }
+
+    (void)HAL_UART_Transmit(PMSX003_DEBUG_UART, (uint8_t *)str, (uint16_t)n, PMSX003_TX_TIMEOUT_MS);
 }
