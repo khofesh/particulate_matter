@@ -14,6 +14,11 @@ uart4 to pms5003
 
 i2c1 to SSD1106 1.3 inch LCD (NOT CONNECTED, DON'T IMPLEMENT)
 
+- PB7 (SDA) -> LCD SDA
+- PB6 (SCL) -> LCD SCK
+- 3V -> LCD VCC
+- GND -> LCD GND
+
 ## driver
 
 for UART connection to user, use `ringbuffer.h` and `ringbuffer.c`
@@ -22,6 +27,18 @@ for UART connection to user, use `ringbuffer.h` and `ringbuffer.c`
 
 - board: https://github.com/WeActStudio/WeActStudio.STM32F4_64Pin_CoreBoard
 - driver: https://github.com/libdriver/pmsx003
+- lcd: https://www.tokopedia.com/syalis-electrical/display-oled-1-3-biru-i2c-ssd1106-syalis
+
+LCD characteristics:
+
+```
+Display Oled 1.3 inch
+IIC
+driver IC SSD1106
+3.3v - 5v
+VCC - GND - SCK - SDA
+blue
+```
 
 ## ignore or maybe later
 
