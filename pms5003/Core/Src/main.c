@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "driver_pmsx003.h"
+#include "driver_pmsx003_interface.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +55,7 @@ DMA_HandleTypeDef hdma_uart4_tx;
 
 /* USER CODE BEGIN PV */
 RingBuffer txBuf, rxBuf;
+static pmsx003_handle_t gs_pms;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,12 +67,52 @@ static void MX_UART4_Init(void);
 static void MX_RTC_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static uint8_t PMS_Init(void);
+static void PMS_PrintData(pmsx003_data_t *d);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static uint8_t PMS_Init(void)
+{
+  DRIVER_PMSX003_LINK_INIT(&gs_pms, pmsx003_handle_t);
+  DRIVER_PMSX003_LINK_UART_INIT(&gs_pms, pmsx003_interface_uart_init);
+  DRIVER_PMSX003_LINK_UART_DEINIT(&gs_pms, pmsx003_interface_uart_deinit);
+  DRIVER_PMSX003_LINK_UART_READ(&gs_pms, pmsx003_interface_uart_read);
+  DRIVER_PMSX003_LINK_UART_WRITE(&gs_pms, pmsx003_interface_uart_write);
+  DRIVER_PMSX003_LINK_UART_FLUSH(&gs_pms, pmsx003_interface_uart_flush);
+  DRIVER_PMSX003_LINK_RESET_GPIO_INIT(&gs_pms, pmsx003_interface_reset_gpio_init);
+  DRIVER_PMSX003_LINK_RESET_GPIO_DEINIT(&gs_pms, pmsx003_interface_reset_gpio_deinit);
+  DRIVER_PMSX003_LINK_RESET_GPIO_WRITE(&gs_pms, pmsx003_interface_reset_gpio_write);
+  DRIVER_PMSX003_LINK_SET_GPIO_INIT(&gs_pms, pmsx003_interface_set_gpio_init);
+  DRIVER_PMSX003_LINK_SET_GPIO_DEINIT(&gs_pms, pmsx003_interface_set_gpio_deinit);
+  DRIVER_PMSX003_LINK_SET_GPIO_WRITE(&gs_pms, pmsx003_interface_set_gpio_write);
+  DRIVER_PMSX003_LINK_DELAY_MS(&gs_pms, pmsx003_interface_delay_ms);
+  DRIVER_PMSX003_LINK_DEBUG_PRINT(&gs_pms, pmsx003_interface_debug_print);
 
+  /* pmsx003_init leaves the handle in active mode, where the sensor pushes a 32 byte
+     frame about once per second on its own, so no mode command is sent here */
+  if (pmsx003_init(&gs_pms) != 0)
+  {
+    return 1;
+  }
+
+  return 0;
+}
+
+static void PMS_PrintData(pmsx003_data_t *d)
+{
+  pmsx003_interface_debug_print("pms5003: standard  pm1.0 %u ug/m3, pm2.5 %u ug/m3, pm10 %u ug/m3.\r\n",
+                                d->pm1p0_standard_ug_m3, d->pm2p5_standard_ug_m3, d->pm10_standard_ug_m3);
+  pmsx003_interface_debug_print("pms5003: atmosphere pm1.0 %u ug/m3, pm2.5 %u ug/m3, pm10 %u ug/m3.\r\n",
+                                d->pm1p0_atmospheric_ug_m3, d->pm2p5_atmospheric_ug_m3, d->pm10_atmospheric_ug_m3);
+  pmsx003_interface_debug_print("pms5003: particles per 0.1L >0.3um %u, >0.5um %u, >1.0um %u.\r\n",
+                                d->beyond_0p3um, d->beyond_0p5um, d->beyond_1p0um);
+  pmsx003_interface_debug_print("pms5003: particles per 0.1L >2.5um %u, >5.0um %u, >10um %u.\r\n",
+                                d->beyond_2p5um, d->beyond_5p0um, d->beyond_10um);
+  pmsx003_interface_debug_print("pms5003: version 0x%02X, error code 0x%02X.\r\n\r\n",
+                                d->version, d->error_code);
+}
 /* USER CODE END 0 */
 
 /**
@@ -109,6 +152,17 @@ int main(void)
   /* USER CODE BEGIN 2 */
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
+
+  pmsx003_interface_debug_print("pms5003: starting.\r\n");
+  if (PMS_Init() != 0)
+  {
+    pmsx003_interface_debug_print("pms5003: init failed.\r\n");
+    Error_Handler();
+  }
+  pmsx003_interface_debug_print("pms5003: init ok, warming up.\r\n");
+
+  /* the sensor needs about 30s of fan run time before the readings settle */
+  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -118,6 +172,22 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    pmsx003_data_t data;
+    uint8_t res;
+
+    /* pmsx003_read needs 64 buffered bytes, that is two frames, so wait a bit over 2s */
+    HAL_Delay(2500);
+
+    res = pmsx003_read(&gs_pms, &data);
+    if (res == 0)
+    {
+      PMS_PrintData(&data);
+    }
+    else
+    {
+      pmsx003_interface_debug_print("pms5003: read failed, code %u.\r\n", res);
+      (void)pmsx003_interface_uart_flush();
+    }
   }
   /* USER CODE END 3 */
 }
