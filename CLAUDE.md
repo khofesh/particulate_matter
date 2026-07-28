@@ -26,13 +26,20 @@ Prerequisites:
 - No unsolicited suggestions or improvements beyond what was asked.
 - Use short variable names where meaning is clear from context.
 
-<!-- example for JavaScript -->
-
 ## Code Style
 
-- JavaScript (ES2022+), no TypeScript unless specified
-- Arrow functions, const over let
-- Minimal inline comments — only for genuinely complex logic
+- C (C11), STM32CubeIDE / GCC ARM toolchain, HAL drivers
+- Never write outside the `/* USER CODE BEGIN X */` ... `/* USER CODE END X */` markers in CubeMX-generated files — code outside is lost on regeneration
+- Application code goes in `Core/Src` and `Core/Inc`; reusable drivers in their own `.c`/`.h` pair
+- Use fixed-width types from `<stdint.h>` (`uint8_t`, `int32_t`), not `int`/`long`
+- `static` for file-local functions and variables; no globals unless shared across translation units
+- Peripheral handles (`huart1`, `hi2c1`, ...) come from CubeMX — declare with `extern` in headers, never redefine
+- Check and handle `HAL_StatusTypeDef` return values; don't ignore them
+- No dynamic allocation (`malloc`/`free`); use static buffers with explicit sizes
+- Keep ISRs short — set flags, defer work to the main loop; shared ISR variables must be `volatile`
+- No blocking `HAL_Delay()` in ISRs or long-running paths; prefer non-blocking / DMA / interrupt-driven APIs
+- Header guards via `#ifndef __FILE_H` / `#define __FILE_H`, matching CubeMX style
+- Minimal inline comments — only for genuinely complex logic or hardware quirks (register timing, errata)
 
 ## Context Retrieval Policy
 
