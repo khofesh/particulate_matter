@@ -8,6 +8,12 @@ Prerequisites:
 - ast-grep (https://github.com/ast-grep/ast-grep)
 -->
 
+# claude
+
+## STM32CubeMX
+
+- if you need to change the configuration in stm32cubemx, don't make changes in `*.ioc` file. Show step-by-step guide instead
+
 ## Response Style
 
 - Be extremely concise. No pleasantries, no filler.
