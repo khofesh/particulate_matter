@@ -20,5 +20,10 @@ pms5003/Debug/*
 pms5003/README.md
 pms5003/.cproject
 pms5003/.mxproject
+
+# vendored, keep Drivers/PMS5003 which is ours
+pms5003/Drivers/ug2/*
+pms5003/Drivers/CMSIS/*
+pms5003/Drivers/STM32F4xx_HAL_Driver/*
 temp/*
 images/*
