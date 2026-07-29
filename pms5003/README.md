@@ -48,3 +48,7 @@ SET and RESET pins are not set, so those functions compile as no-ops behind #ifd
 2. Pinout view -> click a free pin (e.g. PB0) -> select GPIO_Output. Repeat for a second pin (e.g. PB1).
 3. Right-click PB0 -> Enter User Label -> PMSX003_SET. Right-click PB1 -> PMSX003_RESET.
 4. System Core -> GPIO -> for both pins set: Output Level High, Mode Output Push Pull, Pull-up/Pull-down No pull-up and no pull-down, Speed Low.
+
+## images
+
+![the result](../images/6291946631754093381.jpg)
