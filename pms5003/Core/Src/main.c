@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "driver_pmsx003.h"
 #include "driver_pmsx003_interface.h"
+#include "u8g2_port.h"
+#include <stdio.h>
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -69,6 +71,8 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static uint8_t PMS_Init(void);
 static void PMS_PrintData(pmsx003_data_t *d);
+static void PMS_ShowData(pmsx003_data_t *d);
+static void OLED_ShowMessage(const char *msg);
 static void I2C_Scan(void);
 /* USER CODE END PFP */
 
@@ -113,6 +117,35 @@ static void PMS_PrintData(pmsx003_data_t *d)
                                 d->beyond_2p5um, d->beyond_5p0um, d->beyond_10um);
   pmsx003_interface_debug_print("pms5003: version 0x%02X, error code 0x%02X.\r\n\r\n",
                                 d->version, d->error_code);
+}
+
+static void PMS_ShowData(pmsx003_data_t *d)
+{
+  char line[24];
+
+  u8g2_ClearBuffer(&gs_u8g2);
+
+  u8g2_SetFont(&gs_u8g2, u8g2_font_6x12_tf);
+  u8g2_DrawStr(&gs_u8g2, 0, 10, "PM  ug/m3");
+  u8g2_DrawHLine(&gs_u8g2, 0, 13, 128);
+
+  u8g2_SetFont(&gs_u8g2, u8g2_font_7x14B_tf);
+  snprintf(line, sizeof(line), "1.0  %5u", d->pm1p0_atmospheric_ug_m3);
+  u8g2_DrawStr(&gs_u8g2, 0, 30, line);
+  snprintf(line, sizeof(line), "2.5  %5u", d->pm2p5_atmospheric_ug_m3);
+  u8g2_DrawStr(&gs_u8g2, 0, 46, line);
+  snprintf(line, sizeof(line), "10   %5u", d->pm10_atmospheric_ug_m3);
+  u8g2_DrawStr(&gs_u8g2, 0, 62, line);
+
+  u8g2_SendBuffer(&gs_u8g2);
+}
+
+static void OLED_ShowMessage(const char *msg)
+{
+  u8g2_ClearBuffer(&gs_u8g2);
+  u8g2_SetFont(&gs_u8g2, u8g2_font_6x12_tf);
+  u8g2_DrawStr(&gs_u8g2, 0, 32, msg);
+  u8g2_SendBuffer(&gs_u8g2);
 }
 
 static void I2C_Scan(void)
@@ -178,9 +211,17 @@ int main(void)
   pmsx003_interface_debug_print("pms5003: starting.\r\n");
   I2C_Scan();
 
+  if (u8g2_port_init() != 0)
+  {
+    pmsx003_interface_debug_print("sh1106: not responding at 0x78.\r\n");
+    Error_Handler();
+  }
+  OLED_ShowMessage("warming up...");
+
   if (PMS_Init() != 0)
   {
     pmsx003_interface_debug_print("pms5003: init failed.\r\n");
+    OLED_ShowMessage("pms init failed");
     Error_Handler();
   }
   pmsx003_interface_debug_print("pms5003: init ok, warming up.\r\n");
@@ -206,10 +247,12 @@ int main(void)
     if (res == 0)
     {
       PMS_PrintData(&data);
+      PMS_ShowData(&data);
     }
     else
     {
       pmsx003_interface_debug_print("pms5003: read failed, code %u.\r\n", res);
+      OLED_ShowMessage("read failed");
       (void)pmsx003_interface_uart_flush();
     }
   }
