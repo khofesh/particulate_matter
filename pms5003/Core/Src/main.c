@@ -126,7 +126,7 @@ static void PMS_ShowData(pmsx003_data_t *d)
   u8g2_ClearBuffer(&gs_u8g2);
 
   u8g2_SetFont(&gs_u8g2, u8g2_font_6x12_tf);
-  u8g2_DrawStr(&gs_u8g2, 0, 10, "PM  ug/m3");
+  u8g2_DrawStr(&gs_u8g2, 0, 10, "PM        ug/m3");
   u8g2_DrawHLine(&gs_u8g2, 0, 13, 128);
 
   u8g2_SetFont(&gs_u8g2, u8g2_font_7x14B_tf);
