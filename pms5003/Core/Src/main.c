@@ -69,6 +69,7 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static uint8_t PMS_Init(void);
 static void PMS_PrintData(pmsx003_data_t *d);
+static void I2C_Scan(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -113,6 +114,27 @@ static void PMS_PrintData(pmsx003_data_t *d)
   pmsx003_interface_debug_print("pms5003: version 0x%02X, error code 0x%02X.\r\n\r\n",
                                 d->version, d->error_code);
 }
+
+static void I2C_Scan(void)
+{
+  uint8_t found = 0;
+
+  pmsx003_interface_debug_print("i2c: scanning bus.\r\n");
+  for (uint8_t addr = 0x08; addr < 0x78; addr++)
+  {
+    /* HAL takes the 8-bit form of the address */
+    if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(addr << 1), 3, 10) == HAL_OK)
+    {
+      pmsx003_interface_debug_print("i2c: device at 7-bit 0x%02X (write 0x%02X).\r\n",
+                                    addr, addr << 1);
+      found++;
+    }
+  }
+  if (found == 0)
+  {
+    pmsx003_interface_debug_print("i2c: no device found, check wiring and pull-ups.\r\n");
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -154,6 +176,8 @@ int main(void)
   RingBuffer_Init(&rxBuf);
 
   pmsx003_interface_debug_print("pms5003: starting.\r\n");
+  I2C_Scan();
+
   if (PMS_Init() != 0)
   {
     pmsx003_interface_debug_print("pms5003: init failed.\r\n");

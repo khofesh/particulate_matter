@@ -12,7 +12,7 @@ uart4 to pms5003
 - PA0 (uart4_tx) -> rx pms5003
 - PA1 (uart4_rx) -> tx pms5003
 
-i2c1 to SSD1106 1.3 inch LCD (NOT CONNECTED, DON'T IMPLEMENT)
+i2c1 to SSD1106/SH1106 1.3 inch LCD (`i2c: device at 7-bit 0x3C (write 0x78).`)
 
 - PB7 (SDA) -> LCD SDA
 - PB6 (SCL) -> LCD SCK
@@ -34,7 +34,7 @@ LCD characteristics:
 ```
 Display Oled 1.3 inch
 IIC
-driver IC SSD1106
+driver IC SSD1106/SH1106
 3.3v - 5v
 VCC - GND - SCK - SDA
 blue
